@@ -1,0 +1,3 @@
+[tools]
+bats = "latest"
+"github:landstrip/landstrip" = { version = "latest", minimum_release_age = "0s" }
