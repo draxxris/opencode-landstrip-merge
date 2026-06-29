@@ -23,7 +23,6 @@ oc() {
             echo "oc: policy merge failed (run: opencode-landstrip-merge -v)" >&2
             exit 1
         fi
-        cp "$merged_policy" /tmp/out
         landstrip --trap-fd 3 -p "$merged_policy" opencode --log-level DEBUG "$@" 3> /tmp/opencode-landstrip.out
     )
 }

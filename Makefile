@@ -13,7 +13,6 @@ INSTALLED_FUNC := $(DATADIR)/shell-func-oc.sh
 .PHONY: install install-rc uninstall test check clean
 
 install: $(INSTALLED_BIN) $(INSTALLED_FUNC)
-	@$(MAKE) --no-print-directory install-rc
 	@echo ""
 	@echo "Done. Restart your shell (or: source ~/.bashrc / ~/.zshrc) to pick up oc()."
 
