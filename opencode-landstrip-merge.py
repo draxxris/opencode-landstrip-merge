@@ -7,10 +7,10 @@ things, both derived from .opencode/landstrip.json (the per-project source of tr
 
   1. Builds a merged LANDSTRIP policy as JSON. The merge is:
 
-         baseline  (embedded in this script)          (opencode itself + plugins)
-       + project   .opencode/landstrip.json
-              allowRead:   [paths]   -> filesystem.allowRead
-              allowWrite:  [paths]   -> filesystem.allowWrite
+          baseline  ~/.config/opencode/landstrip.json   (opencode itself + plugins)
+        + project   .opencode/landstrip.json
+               allowRead:   [paths]   -> filesystem.allowRead
+               allowWrite:  [paths]   -> filesystem.allowWrite
 
      Arrays are extended and de-duplicated (baseline entries first, preserved
      verbatim including their `~` form). The merged JSON is written to a temp
@@ -37,8 +37,9 @@ when a change is actually needed. All diagnostics go to stderr; the ONLY stdout
 line is the merged policy path.
 
 CLI (all optional; defaults shown):
-    --baseline   (omitted: uses the baseline embedded in this script;
-                 pass a path to override, e.g. for testing)
+    --baseline   ~/.config/opencode/landstrip.json
+                 (the user-level baseline; created by `make install`.
+                 Pass a path to override, e.g. for testing.)
     --rules      .opencode/landstrip.json
     --jsonc      ./opencode.jsonc
     --out        /tmp/opencode-scratch/landstrip-policy.json
@@ -57,46 +58,15 @@ import sys
 # Trim this (e.g. to ("allowRead",)) to mirror fewer.
 EXTERNAL_DIRECTORY_SOURCES = ("allowRead", "allowWrite")
 
+DEFAULT_BASELINE = "~/.config/opencode/landstrip.json"  # user-level baseline (created by `make install`)
 DEFAULT_RULES = ".opencode/landstrip.json"   # per-project landstrip rules (JSON)
 DEFAULT_OUT = "/tmp/opencode-scratch/landstrip-policy.json"
 
-# Baseline landstrip policy: the access opencode ITSELF + its plugins need to run.
-# Embedded so there is no external baseline file to keep in sync. `~` is left
-# literal because landstrip expands it (matching the original baseline file).
-BASELINE_POLICY = {
-    "filesystem": {
-        "allowWrite": [
-            ".",
-            "/tmp/opencode-scratch",
-            "/tmp/landstrip",
-            "~/opencode-trace",
-            "~/.cache",
-            "~/.local/share",
-            "~/.local/state",
-            "~/.npm/_logs",
-            "~/.npm/_cacache",
-            "~/.npm/_update-notifier-last-checked",
-            "/dev/null",
-            "~/.herdr/worktrees",
-        ],
-        "denyRead": [
-            "~/.ssh",
-        ],
-        "allowRead": [
-            "/etc/passwd",
-            "/usr",
-            "/var",
-            "/proc",
-            "~/.config/opencode",
-            "~/.local",
-            "~/.npm",
-            "~/.ssh/config",
-        ],
-    },
-    "network": {
-        "allowNetwork": True,
-    },
-}
+# The baseline landstrip policy -- the access opencode ITSELF + its plugins need
+# to run -- is no longer embedded here. It lives in the user-level file
+# DEFAULT_BASELINE (a full landstrip policy: filesystem.{allowWrite,denyRead,
+# allowRead} + network). `make install` seeds it from landstrip-default.json in
+# this repo. `~` paths are left literal because landstrip expands them.
 
 
 # --------------------------------------------------------------------------- #
@@ -305,8 +275,18 @@ def glob_base(glob_str):
 # Core: landstrip policy merge
 # --------------------------------------------------------------------------- #
 def read_baseline(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    """Load and validate the baseline landstrip policy. Must be a JSON object."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        sys.stderr.write("opencode-landstrip-merge: %s is not valid JSON: %s\n" % (path, e))
+        sys.exit(2)
+    if not isinstance(data, dict):
+        sys.stderr.write("opencode-landstrip-merge: %s must contain a JSON object, got %s\n"
+                         % (path, type(data).__name__))
+        sys.exit(2)
+    return data
 
 
 def read_project(rules_path):
@@ -521,8 +501,9 @@ def mirror_external_directory(jsonc_path, entries):
 # --------------------------------------------------------------------------- #
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Merge landstrip + opencode policy for oc().")
-    ap.add_argument("--baseline", default=os.environ.get("OC_LANDSTRIP_BASELINE"),
-                    help="override baseline policy file (default: baseline embedded in this script)")
+    ap.add_argument("--baseline", default=os.environ.get("OC_LANDSTRIP_BASELINE", DEFAULT_BASELINE),
+                    help="baseline policy file (default: %s; created by `make install`)"
+                         % DEFAULT_BASELINE)
     ap.add_argument("--rules", default=os.environ.get("OC_LANDSTRIP_RULES", DEFAULT_RULES))
     ap.add_argument("--jsonc", default=os.environ.get("OC_OPENCODE_JSONC", "./opencode.jsonc"))
     ap.add_argument("--out", default=os.environ.get("OC_POLICY_OUT", DEFAULT_OUT))
@@ -532,13 +513,13 @@ def main(argv=None):
                     help="log routine info (which rules file was merged) to stderr")
     args = ap.parse_args(argv)
 
-    if args.baseline:
-        if not os.path.exists(args.baseline):
-            sys.stderr.write("opencode-landstrip-merge: baseline policy not found: %s\n" % args.baseline)
-            return 1
-        baseline = read_baseline(args.baseline)
-    else:
-        baseline = copy.deepcopy(BASELINE_POLICY)
+    baseline_path = os.path.expanduser(args.baseline)
+    if not os.path.exists(baseline_path):
+        sys.stderr.write("opencode-landstrip-merge: baseline policy not found: %s\n" % baseline_path)
+        if args.baseline == DEFAULT_BASELINE:
+            sys.stderr.write("  (run `make install` to create the default baseline)\n")
+        return 1
+    baseline = read_baseline(baseline_path)
     allow_read, allow_write = read_project(args.rules)
 
     if allow_read is None and allow_write is None:

@@ -9,6 +9,42 @@ SCRIPT="${BATS_TEST_DIRNAME}/../opencode-landstrip-merge.py"
 setup() {
     PROJ="$(mktemp -d)"
     export PROJ
+    # The baseline is no longer embedded in the script; seed one in the temp
+    # project so the default tests run against a known baseline (8 allowRead,
+    # 12 allowWrite). Tests that need a different/absent baseline pass --baseline.
+    BASELINE="$PROJ/baseline.json"
+    cat > "$BASELINE" <<'EOF'
+{
+    "filesystem": {
+        "allowWrite": [
+            ".",
+            "/tmp/opencode-scratch",
+            "/tmp/landstrip",
+            "~/opencode-trace",
+            "~/.cache",
+            "~/.local/share",
+            "~/.local/state",
+            "~/.npm/_logs",
+            "~/.npm/_cacache",
+            "~/.npm/_update-notifier-last-checked",
+            "/dev/null",
+            "~/.herdr/worktrees"
+        ],
+        "denyRead": ["~/.ssh"],
+        "allowRead": [
+            "/etc/passwd",
+            "/usr",
+            "/var",
+            "/proc",
+            "~/.config/opencode",
+            "~/.local",
+            "~/.npm",
+            "~/.ssh/config"
+        ]
+    },
+    "network": { "allowNetwork": true }
+}
+EOF
 }
 
 teardown() {
@@ -18,6 +54,7 @@ teardown() {
 # Run the merge against the temp project; extra args are appended.
 merge() {
     run python3 "$SCRIPT" \
+        --baseline "$BASELINE" \
         --rules "$PROJ/.opencode/landstrip.json" \
         --jsonc "$PROJ/opencode.jsonc" \
         --out "$PROJ/policy.json" "$@"
@@ -145,6 +182,7 @@ write_jsonc() {
     mkdir -p "$PROJ/.opencode"
     printf '{"allowRead":["/srv/a"]}' > "$PROJ/.opencode/landstrip.json"
     run --separate-stderr python3 "$SCRIPT" \
+        --baseline "$BASELINE" \
         --rules "$PROJ/.opencode/landstrip.json" \
         --jsonc "$PROJ/opencode.jsonc" \
         --out "$PROJ/custom.json"
@@ -157,4 +195,38 @@ write_jsonc() {
     merge --baseline /no/such/file.json
     [ "$status" -ne 0 ]
     [[ "$output" == *"baseline policy not found"* ]]
+}
+
+@test "missing default baseline (~/.config/opencode/landstrip.json) -> nonzero exit + make install hint" {
+    # The baseline is no longer embedded: with HOME pointing at an empty dir,
+    # the default baseline path is absent and the script must refuse to run.
+    mkdir -p "$PROJ/.opencode"
+    printf '{"allowRead":["/srv/a"]}' > "$PROJ/.opencode/landstrip.json"
+    local saved_home="$HOME"
+    HOME="$PROJ"
+    run python3 "$SCRIPT" \
+        --rules "$PROJ/.opencode/landstrip.json" \
+        --jsonc "$PROJ/opencode.jsonc" \
+        --out "$PROJ/policy.json"
+    HOME="$saved_home"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"baseline policy not found"* ]]
+    [[ "$output" == *"$PROJ/.config/opencode/landstrip.json"* ]]
+    [[ "$output" == *"make install"* ]]
+    [ ! -e "$PROJ/policy.json" ]
+    [ ! -e "$PROJ/opencode.jsonc" ]
+}
+
+@test "non-object baseline (a bare list) -> nonzero exit + clear stderr" {
+    printf '["a","b"]' > "$BASELINE"
+    merge
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"must contain a JSON object"* ]]
+}
+
+@test "malformed baseline -> nonzero exit + clear stderr" {
+    printf '{ broken json' > "$BASELINE"
+    merge
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not valid JSON"* ]]
 }
