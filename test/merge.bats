@@ -11,7 +11,7 @@ setup() {
     export PROJ
     # The baseline is no longer embedded in the script; seed one in the temp
     # project so the default tests run against a known baseline (8 allowRead,
-    # 12 allowWrite). Tests that need a different/absent baseline pass --baseline.
+    # 12 allowWrite, 1 denyWrite). Tests that need a different/absent baseline pass --baseline.
     BASELINE="$PROJ/baseline.json"
     cat > "$BASELINE" <<'EOF'
 {
@@ -30,6 +30,7 @@ setup() {
             "/dev/null",
             "~/.herdr/worktrees"
         ],
+        "denyWrite": ["~/.cache/secret"],
         "denyRead": ["~/.ssh"],
         "allowRead": [
             "/etc/passwd",
@@ -61,7 +62,7 @@ merge() {
 }
 
 # length of filesystem.<key> in a merged policy json file
-plen() {  # plen <file> <allowRead|allowWrite>
+plen() {  # plen <file> <filesystem key>
     go run "${BATS_TEST_DIRNAME}/helper" length "$1" "$2"
 }
 
@@ -82,6 +83,7 @@ write_jsonc() {
     [ "$status" -eq 0 ]
     [ "$(plen "$PROJ/policy.json" allowRead)"  = "8" ]
     [ "$(plen "$PROJ/policy.json" allowWrite)" = "12" ]
+    [ "$(plen "$PROJ/policy.json" denyWrite)" = "1" ]
     [ ! -e "$PROJ/opencode.jsonc" ]
 }
 
@@ -94,14 +96,59 @@ write_jsonc() {
     [ "$(plen "$PROJ/policy.json" allowWrite)" = "13" ]   # 12 baseline + 1
 }
 
+@test "merges denyWrite into the policy and de-duplicates baseline entries" {
+    mkdir -p "$PROJ/.opencode"
+    printf '{"denyWrite":["~/.cache/secret","/srv/internal"]}' > "$PROJ/.opencode/landstrip.json"
+    merge
+    [ "$status" -eq 0 ]
+    [ "$(plen "$PROJ/policy.json" denyWrite)" = "2" ]   # 1 baseline + 1 new
+    [ "$(plen "$PROJ/policy.json" allowRead)" = "8" ]
+    [ "$(plen "$PROJ/policy.json" allowWrite)" = "12" ]
+}
+
+@test "merges denyWrite alongside allowRead and allowWrite" {
+    mkdir -p "$PROJ/.opencode"
+    printf '{"allowRead":["/srv/project"],"allowWrite":["~/.cache/project"],"denyWrite":["/srv/internal"]}' > "$PROJ/.opencode/landstrip.json"
+    merge
+    [ "$status" -eq 0 ]
+    [ "$(plen "$PROJ/policy.json" allowRead)" = "9" ]
+    [ "$(plen "$PROJ/policy.json" allowWrite)" = "13" ]
+    [ "$(plen "$PROJ/policy.json" denyWrite)" = "2" ]
+}
+
+@test "accepts a single-string denyWrite value" {
+    mkdir -p "$PROJ/.opencode"
+    printf '{"denyWrite":"~/.cache/single"}' > "$PROJ/.opencode/landstrip.json"
+    merge
+    [ "$status" -eq 0 ]
+    [ "$(plen "$PROJ/policy.json" denyWrite)" = "2" ]
+}
+
+@test "invalid denyWrite value -> nonzero exit + clear stderr" {
+    mkdir -p "$PROJ/.opencode"
+    printf '{"denyWrite":true}' > "$PROJ/.opencode/landstrip.json"
+    merge
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"'denyWrite'"* ]]
+}
+
 @test "creates opencode.jsonc with external_directory from allowRead AND allowWrite when absent" {
     mkdir -p "$PROJ/.opencode"
-    printf '{"allowRead":["/srv/projX"],"allowWrite":["~/.cache/z"]}' > "$PROJ/.opencode/landstrip.json"
+    printf '{"allowRead":["/srv/projX"],"allowWrite":["~/.cache/z"],"denyWrite":["/srv/no-write"]}' > "$PROJ/.opencode/landstrip.json"
     merge
     [ "$status" -eq 0 ]
     [ -f "$PROJ/opencode.jsonc" ]
     grep -qF '"/srv/projX/**": "allow"' "$PROJ/opencode.jsonc"
     grep -qF '.cache/z/**": "allow"' "$PROJ/opencode.jsonc"   # allowWrite IS mirrored too
+    ! grep -qF '/srv/no-write/**' "$PROJ/opencode.jsonc"
+}
+
+@test "denyWrite alone does not create opencode.jsonc" {
+    mkdir -p "$PROJ/.opencode"
+    printf '{"denyWrite":["/srv/no-write"]}' > "$PROJ/.opencode/landstrip.json"
+    merge
+    [ "$status" -eq 0 ]
+    [ ! -e "$PROJ/opencode.jsonc" ]
 }
 
 @test "idempotent: a second run leaves opencode.jsonc unchanged" {

@@ -17,7 +17,9 @@ Each `oc()` invocation runs `opencode-landstrip-merge`, which:
     - the **project** file `.opencode/landstrip.json`:
       - `allowRead` → `filesystem.allowRead`
       - `allowWrite` → `filesystem.allowWrite`
-    - arrays are extended and de-duplicated; `~` is kept literal (landstrip expands it).
+      - `denyWrite` → `filesystem.denyWrite`
+    - arrays are extended and de-duplicated with the baseline; `~` is kept literal (landstrip expands it). Baseline
+      `denyWrite` entries are preserved when the project does not specify any.
 
     The baseline is **not** embedded in the script. `mise run install` seeds it from
     [`landstrip-default.json`](landstrip-default.json); if the file is missing the script refuses to run (re-run
@@ -30,8 +32,9 @@ Each `oc()` invocation runs `opencode-landstrip-merge`, which:
     - Otherwise entries are **additively inserted** via comment-preserving text surgery (comments, formatting and any
       manually-added keys are never touched; nothing is ever removed).
     - **Both** `allowRead` and `allowWrite` paths are mirrored --- landstrip and `external_directory` are independent
-      gates that both must pass for a tool to reach a path outside the project root. Trim `EXTERNAL_DIRECTORY_SOURCES`
-      in the script to mirror fewer.
+      gates that both must pass for a tool to reach a path outside the project root. `denyWrite` is enforced by
+      landstrip only and is not mirrored as an `external_directory` entry. Trim `EXTERNAL_DIRECTORY_SOURCES` in the
+      script to mirror fewer.
 
 landstrip only reads JSON policies, so the project file is JSON.
 
@@ -70,7 +73,8 @@ In a project, drop a `.opencode/landstrip.json`:
 ``` json
 {
     "allowRead":  ["/abs/path/to/read", "/another"],
-    "allowWrite": ["~/.cache/thing"]
+    "allowWrite": ["~/.cache/thing"],
+    "denyWrite":  ["~/.cache/thing/secrets"]
 }
 ```
 

@@ -16,6 +16,13 @@ var externalSources = []string{"allowRead", "allowWrite"}
 
 const defaultBaseline = "~/.config/opencode/landstrip.json"
 
+type projectRuleSet struct {
+	allowRead  []string
+	allowWrite []string
+	denyWrite  []string
+	exists     bool
+}
+
 func die(format string, args ...any) error {
 	return fmt.Errorf("opencode-landstrip-merge: "+format, args...)
 }
@@ -44,31 +51,40 @@ func readJSON(path string) (map[string]any, error) {
 	return m, nil
 }
 
-func projectRules(path string) ([]string, []string, bool, error) {
+func projectRules(path string) (projectRuleSet, error) {
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil, false, nil
+		return projectRuleSet{}, nil
 	}
 	if err != nil {
-		return nil, nil, false, err
+		return projectRuleSet{}, err
 	}
 	var raw any
 	if err := json.Unmarshal(b, &raw); err != nil {
-		return nil, nil, false, die("%s is not valid JSON: %v", path, err)
+		return projectRuleSet{}, die("%s is not valid JSON: %v", path, err)
 	}
 	data, ok := raw.(map[string]any)
 	if !ok {
-		return nil, nil, false, die("%s must contain a JSON object, got %T", path, raw)
+		return projectRuleSet{}, die("%s must contain a JSON object, got %T", path, raw)
 	}
 	read, err := stringList(data["allowRead"], "allowRead", path)
 	if err != nil {
-		return nil, nil, false, err
+		return projectRuleSet{}, err
 	}
 	write, err := stringList(data["allowWrite"], "allowWrite", path)
 	if err != nil {
-		return nil, nil, false, err
+		return projectRuleSet{}, err
 	}
-	return read, write, true, nil
+	denyWrite, err := stringList(data["denyWrite"], "denyWrite", path)
+	if err != nil {
+		return projectRuleSet{}, err
+	}
+	return projectRuleSet{
+		allowRead:  read,
+		allowWrite: write,
+		denyWrite:  denyWrite,
+		exists:     true,
+	}, nil
 }
 
 func stringList(v any, key, path string) ([]string, error) {
@@ -89,7 +105,7 @@ func stringList(v any, key, path string) ([]string, error) {
 	return out, nil
 }
 
-func mergePolicy(base map[string]any, read, write []string) map[string]any {
+func mergePolicy(base map[string]any, rules projectRuleSet) map[string]any {
 	// JSON round-trip gives us a deep copy without imposing a schema on the baseline.
 	b, _ := json.Marshal(base)
 	var merged map[string]any
@@ -99,7 +115,16 @@ func mergePolicy(base map[string]any, read, write []string) map[string]any {
 		fs = map[string]any{}
 		merged["filesystem"] = fs
 	}
-	for key, extra := range map[string][]string{"allowRead": read, "allowWrite": write} {
+	for key, extra := range map[string][]string{
+		"allowRead":  rules.allowRead,
+		"allowWrite": rules.allowWrite,
+		"denyWrite":  rules.denyWrite,
+	} {
+		if key == "denyWrite" && len(extra) == 0 {
+			if _, present := fs[key]; !present {
+				continue
+			}
+		}
 		v, _ := fs[key].([]any)
 		seen := map[string]bool{}
 		for _, x := range v {
@@ -290,18 +315,18 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
-	read, write, exists, err := projectRules(*rules)
+	project, err := projectRules(*rules)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
-	if !exists {
-		read, write = nil, nil
+	if !project.exists {
+		project = projectRuleSet{}
 		if *verbose {
 			fmt.Fprintf(os.Stderr, "opencode-landstrip-merge: no %s found; using baseline policy only\n", *rules)
 		}
 	}
-	b, _ := json.MarshalIndent(mergePolicy(base, read, write), "", "    ")
+	b, _ := json.MarshalIndent(mergePolicy(base, project), "", "    ")
 	b = append(b, '\n')
 	if err := os.MkdirAll(filepath.Dir(*out), 0755); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -312,7 +337,7 @@ func main() {
 		os.Exit(2)
 	}
 	if !*noJSONC {
-		if err := mirror(*jsonc, derived(read, write)); err != nil {
+		if err := mirror(*jsonc, derived(project.allowRead, project.allowWrite)); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
