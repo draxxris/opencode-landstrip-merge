@@ -1,3 +1,13 @@
 [tools]
 bats = "latest"
 "github:landstrip/landstrip" = { version = "latest", minimum_release_age = "0s" }
+go = "1.26"
+
+[tasks.compile]
+description = "Compile the landstrip merger"
+run = "go build -o opencode-landstrip-merge ."
+
+[tasks.test]
+description = "Run the test suite"
+depends = ["compile"]
+run = "bats test/"

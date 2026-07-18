@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+
+PREFIX=${PREFIX:-"$HOME/.local"}
+BINDIR=${BINDIR:-"$PREFIX/bin"}
+DATADIR=${DATADIR:-"$PREFIX/share/opencode-landstrip-merge"}
+BASELINE_FILE=${BASELINE_FILE:-"$HOME/.config/opencode/landstrip.json"}
+
+mise run compile
+mkdir -p "$BINDIR"
+install -m 0755 opencode-landstrip-merge "$BINDIR/opencode-landstrip-merge"
+echo "[install] $BINDIR/opencode-landstrip-merge"
+
+mkdir -p "$DATADIR"
+install -m 0644 shell-func-oc.sh "$DATADIR/shell-func-oc.sh"
+echo "[install] $DATADIR/shell-func-oc.sh"
+
+mkdir -p "$(dirname "$BASELINE_FILE")"
+if [ -f "$BASELINE_FILE" ]; then
+    echo "[skip]    $BASELINE_FILE (already exists; not overwritten)"
+else
+    install -m 0644 landstrip-default.json "$BASELINE_FILE"
+    echo "[install] $BASELINE_FILE"
+fi
+
+echo ""
+echo "Done. Run 'mise run install-rc', then restart your shell to pick up oc()."

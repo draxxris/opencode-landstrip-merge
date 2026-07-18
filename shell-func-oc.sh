@@ -1,6 +1,6 @@
 # oc() -- launch opencode under landstrip with a per-project merged policy.
 #
-# Sourced by ~/.bashrc and ~/.zshrc (wired in by `make install`). Requires that
+# Sourced by ~/.bashrc and ~/.zshrc (wired in by `mise run install-rc`). Requires that
 # `opencode-landstrip-merge`, `landstrip`, and `opencode` are on PATH.
 #
 # Runs in a subshell so an EXIT trap cleans up the per-invocation policy tmpdir

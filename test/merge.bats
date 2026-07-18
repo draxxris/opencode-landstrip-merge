@@ -4,7 +4,7 @@
 bats_require_minimum_version 1.5.0
 
 # Tests run the source script directly (no install needed).
-SCRIPT="${BATS_TEST_DIRNAME}/../opencode-landstrip-merge.py"
+SCRIPT="${BATS_TEST_DIRNAME}/../opencode-landstrip-merge"
 
 setup() {
     PROJ="$(mktemp -d)"
@@ -53,7 +53,7 @@ teardown() {
 
 # Run the merge against the temp project; extra args are appended.
 merge() {
-    run python3 "$SCRIPT" \
+    run "$SCRIPT" \
         --baseline "$BASELINE" \
         --rules "$PROJ/.opencode/landstrip.json" \
         --jsonc "$PROJ/opencode.jsonc" \
@@ -62,12 +62,12 @@ merge() {
 
 # length of filesystem.<key> in a merged policy json file
 plen() {  # plen <file> <allowRead|allowWrite>
-    python3 -c "import json,sys;print(len(json.load(open(sys.argv[1]))['filesystem'][sys.argv[2]]))" "$1" "$2"
+    go run "${BATS_TEST_DIRNAME}/helper" length "$1" "$2"
 }
 
 # exit 0 iff the file parses as JSONC (string-aware: // inside strings is safe)
 valid_jsonc() {
-    python3 "${BATS_TEST_DIRNAME}/validate_jsonc.py" "$1"
+    go run "${BATS_TEST_DIRNAME}/helper" validate "$1"
 }
 
 # write a pretty opencode.jsonc from one line per array element
@@ -181,7 +181,7 @@ write_jsonc() {
 @test "--out path is printed to stdout and the policy is written there" {
     mkdir -p "$PROJ/.opencode"
     printf '{"allowRead":["/srv/a"]}' > "$PROJ/.opencode/landstrip.json"
-    run --separate-stderr python3 "$SCRIPT" \
+    run --separate-stderr "$SCRIPT" \
         --baseline "$BASELINE" \
         --rules "$PROJ/.opencode/landstrip.json" \
         --jsonc "$PROJ/opencode.jsonc" \
@@ -197,14 +197,14 @@ write_jsonc() {
     [[ "$output" == *"baseline policy not found"* ]]
 }
 
-@test "missing default baseline (~/.config/opencode/landstrip.json) -> nonzero exit + make install hint" {
+@test "missing default baseline (~/.config/opencode/landstrip.json) -> nonzero exit + mise install hint" {
     # The baseline is no longer embedded: with HOME pointing at an empty dir,
     # the default baseline path is absent and the script must refuse to run.
     mkdir -p "$PROJ/.opencode"
     printf '{"allowRead":["/srv/a"]}' > "$PROJ/.opencode/landstrip.json"
     local saved_home="$HOME"
     HOME="$PROJ"
-    run python3 "$SCRIPT" \
+    run "$SCRIPT" \
         --rules "$PROJ/.opencode/landstrip.json" \
         --jsonc "$PROJ/opencode.jsonc" \
         --out "$PROJ/policy.json"
@@ -212,7 +212,7 @@ write_jsonc() {
     [ "$status" -ne 0 ]
     [[ "$output" == *"baseline policy not found"* ]]
     [[ "$output" == *"$PROJ/.config/opencode/landstrip.json"* ]]
-    [[ "$output" == *"make install"* ]]
+    [[ "$output" == *"mise run install"* ]]
     [ ! -e "$PROJ/policy.json" ]
     [ ! -e "$PROJ/opencode.jsonc" ]
 }

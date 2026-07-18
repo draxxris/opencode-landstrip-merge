@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+PREFIX=${PREFIX:-"$HOME/.local"}
+BINDIR=${BINDIR:-"$PREFIX/bin"}
+DATADIR=${DATADIR:-"$PREFIX/share/opencode-landstrip-merge"}
+BASELINE_FILE=${BASELINE_FILE:-"$HOME/.config/opencode/landstrip.json"}
+
+rm -f "$BINDIR/opencode-landstrip-merge" "$DATADIR/shell-func-oc.sh"
+echo "[uninstall] removed $BINDIR/opencode-landstrip-merge"
+echo "[uninstall] removed $DATADIR/shell-func-oc.sh"
+echo "(baseline $BASELINE_FILE left in place; remove manually if desired)"
+echo "(source lines in ~/.bashrc / ~/.zshrc left in place; remove manually if desired)"

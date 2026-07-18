@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+
+PREFIX=${PREFIX:-"$HOME/.local"}
+DATADIR=${DATADIR:-"$PREFIX/share/opencode-landstrip-merge"}
+installed_func="$DATADIR/shell-func-oc.sh"
+
+for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    [ -f "$rc" ] || touch "$rc"
+    if grep -qF "$installed_func" "$rc"; then
+        echo "[skip]    $rc already sources oc()"
+    else
+        printf '\n# opencode-landstrip-merge: oc() function\n[ -f "%s" ] && . "%s"\n' \
+            "$installed_func" "$installed_func" >> "$rc"
+        echo "[install] oc() sourced in $rc"
+    fi
+done

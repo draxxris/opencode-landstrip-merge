@@ -19,9 +19,9 @@ Each `oc()` invocation runs `opencode-landstrip-merge`, which:
       - `allowWrite` → `filesystem.allowWrite`
     - arrays are extended and de-duplicated; `~` is kept literal (landstrip expands it).
 
-    The baseline is **not** embedded in the script. `make install` seeds it from
+    The baseline is **not** embedded in the script. `mise run install` seeds it from
     [`landstrip-default.json`](landstrip-default.json); if the file is missing the script refuses to run (re-run
-    `make install`, or edit the file to customize what opencode + its plugins may touch).
+    `mise run install`, or edit the file to customize what opencode + its plugins may touch).
 
 2.  **Mirrors the project's read paths** into the local `./opencode.jsonc` so opencode's permission layer agrees with
     the sandbox: each `allowRead` path becomes `"<path>/**": "allow"` under `permission.external_directory`.
@@ -38,13 +38,13 @@ landstrip only reads JSON policies, so the project file is JSON.
 ## Prerequisites
 
 - `landstrip` and `opencode` on `PATH`
-- `python3` (stdlib only --- no pip packages)
-- [`mise`](https://mise.jdx.dev/) --- only to run the test suite (installs `bats`)
+- Go 1.22 or newer
+- [`mise`](https://mise.jdx.dev/) --- to compile and run the test suite
 
 ## Install
 
 ``` sh
-make install
+mise run install
 ```
 
 This:
@@ -53,8 +53,8 @@ This:
 - installs `contrib/shell-func-oc.sh` → `~/.local/share/opencode-landstrip-merge/`
 - seeds the baseline policy `~/.config/opencode/landstrip.json` from `landstrip-default.json` --- **only if it does not
   already exist**, so your edits are never overwritten on re-install
-- appends a guarded `source` line for the `oc()` function to **both** `~/.bashrc` and `~/.zshrc` (idempotent --- safe to
-  re-run).
+- `mise run install-rc` appends a guarded `source` line for the `oc()` function to **both** `~/.bashrc` and `~/.zshrc`
+  (idempotent --- safe to re-run).
 
 Then restart your shell (or `source ~/.bashrc` / `~/.zshrc`). Ensure `~/.local/bin` is on your `PATH`.
 
@@ -80,13 +80,14 @@ The matching `./opencode.jsonc` is kept in sync automatically on each `oc()`.
 
 ``` sh
 mise install      # installs bats (declared in mise.toml)
-make test
+mise run compile
+mise run test
 ```
 
 ## Uninstall
 
 ``` sh
-make uninstall
+mise run uninstall
 ```
 
 (The `source` lines in `~/.bashrc` / `~/.zshrc` are left in place; remove them manually if you like.)
